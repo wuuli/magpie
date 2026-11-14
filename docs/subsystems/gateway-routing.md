@@ -3161,24 +3161,36 @@ whole conversation every turn. Codex says `store: false`, so
   caps, as `store: true` would have it.
 - When the reply says it was kept, this magpie records the turn per route
   and scope (`remoteTurns`): a SHA-256 of each input item as sent (after
-  masking and translation), each output item's type, id and call_id, and
-  the other magpie's response id. At most 16 per route and scope, 32 MB in
+  masking and translation), each output item's type, id, call_id and
+  content digest, and the other magpie's response id. At most 16 per route
+  and scope, 32 MB in
   all, each for `prevTTL`.
 - The next request whose input starts with exactly those items, then as
   many items as the reply had with the same type and call_id (and id where
-  both have one; Codex sends its items back without ids), and then at least
-  one more, goes as the items after them with `previous_response_id`.
+  both have one; Codex sends its items back without ids), matching content,
+  and then at least one more, goes as the items after them with
+  `previous_response_id`. The content digest uses `codexSocketItem`'s
+  normalization: it omits the item's own id and status, and nulls, empty
+  lists, annotations and logprobs at any depth. Object key order is ignored;
+  an assistant message's `final_answer` phase (added by the relay) may be
+  omitted too, while an explicit `commentary` phase still differs.
+  Arguments strings, function names, text and other content still count.
+  An unreadable item never matches.
   Anything else goes whole: an edited or shortened history, another
   answer in place of the reply, a request naming its own previous
   response, or a magpie that never said it keeps turns (one from before
-  this).
+  this). This includes a client replacing a truncated function call's
+  arguments with `{}` while keeping its ids: the remote must receive that
+  correction, not restore the original arguments from its kept response.
 - A delta the other magpie refuses (`prevRefused`: it restarted, or let
   the turn go under its cap) is sent again whole at once, the record is
   dropped, and that route goes whole for 30 minutes (`remoteRefusedWait`).
-- Not covered: the reply's output is matched by type and ids only, so a
-  client that edits the text of the last answer (no ids) is sent a delta
-  over the answer the other magpie kept. Tools and instructions still go
-  every turn. The other magpie's kept turns are in memory only.
+- `TestRemoteMagpieKeepsClientOutputContent` covers both hops with a fake
+  vendor, including incomplete JSON/SSE replies and unchanged-output controls.
+  `TestRemoteOutputMatchRequiresKnownContent` covers unreadable items and
+  the comparison's boundaries.
+- Tools and instructions still go every turn. The other magpie's kept
+  turns are in memory only.
 
 ### What runs once on a hop to another magpie
 

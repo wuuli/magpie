@@ -27,10 +27,11 @@ import (
 // magpie that does says so on its reply (KeptTurnHeader). This side keeps
 // what it sent that route and scope: a digest of each input item as it
 // went (after masking and every translation), the reply's output items'
-// type and ids, and the other magpie's id for the reply (remoteSent). The
-// next request whose input starts with exactly those items, then as many
-// items as the reply had of the same type and call_id or id, goes as the
-// items after them with previous_response_id, store as it was. Anything
+// type, ids and content digest, and the other magpie's id for the reply
+// (remoteSent). The next request whose input starts with exactly those
+// items, then as many items as the reply had of the same content, type
+// and call_id or id, goes as the items after them with previous_response_id,
+// store as it was. Anything
 // else goes whole: another history, an edited one, a request that names
 // a previous response itself, a magpie that never said it keeps turns
 // (one from before this), or a route whose magpie refused the id within
@@ -67,7 +68,11 @@ const (
 type itemSum [sha256.Size]byte
 
 // itemMark is what of a reply's output item its next request must match.
-type itemMark struct{ typ, id, callID string }
+type itemMark struct {
+	typ, id, callID string
+	sum             itemSum
+	known           bool
+}
 
 // remoteSent is one turn sent a remote magpie and answered.
 type remoteSent struct {
@@ -79,7 +84,13 @@ type remoteSent struct {
 	el     *list.Element
 }
 
-func (t *remoteSent) size() int { return len(t.input)*sha256.Size + len(t.output)*64 + len(t.id) }
+func (t *remoteSent) size() int {
+	n := len(t.input)*sha256.Size + len(t.output)*(64+sha256.Size) + len(t.id)
+	for _, m := range t.output {
+		n += len(m.typ) + len(m.id) + len(m.callID)
+	}
+	return n
+}
 
 type remoteSentStore struct {
 	mu      sync.Mutex
@@ -97,8 +108,8 @@ func newRemoteSentStore() *remoteSentStore {
 }
 
 // match is the newest turn kept under key that items continue: its input
-// digests the first items' own, then items of its output's types and ids,
-// and at least one item after them. n is how many items it covers.
+// digests the first items' own, then items of its output's content, types
+// and ids, and at least one item after them. n is how many items it covers.
 func (s *remoteSentStore) match(key string, sums []itemSum, items []json.RawMessage) (best *remoteSent, n int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -203,20 +214,42 @@ func sumsEqual(a, b []itemSum) bool {
 }
 
 func markOf(item []byte) itemMark {
+	// A partial or otherwise unreadable item cannot prove equality. The
+	// shared socket normalizer ignores metadata clients commonly omit,
+	// while keeping arguments, names, text and other content in the digest.
+	if !json.Valid(item) {
+		return itemMark{}
+	}
 	r := gjson.GetManyBytes(item, "type", "id", "call_id")
-	return itemMark{typ: r[0].String(), id: r[1].String(), callID: r[2].String()}
+	// The relay adds final_answer to ordinary assistant messages. Clients
+	// can omit that default on replay; an explicit commentary still differs.
+	if r[0].String() == "message" && gjson.GetBytes(item, "role").String() == "assistant" && gjson.GetBytes(item, "phase").String() == phaseFinal {
+		var m map[string]json.RawMessage
+		if decodeJSONView(item, &m) != nil {
+			return itemMark{}
+		}
+		delete(m, "phase")
+		var err error
+		item, err = json.Marshal(m)
+		if err != nil {
+			return itemMark{}
+		}
+	}
+	sum, known := codexSocketItem(item)
+	return itemMark{typ: r[0].String(), id: r[1].String(), callID: r[2].String(), sum: sum, known: known}
 }
 
 // marksMatch is whether items are the reply's output as the client gave
 // it back: each of the same type and call_id, and of the same id where
-// both have one (Codex sends its items back without theirs).
+// both have one (Codex sends its items back without theirs). Content must
+// match too: a client can repair a truncated call while keeping its ids.
 func marksMatch(want []itemMark, items []json.RawMessage) bool {
 	if len(want) != len(items) {
 		return false
 	}
 	for i, w := range want {
 		got := markOf(items[i])
-		if got.typ != w.typ || got.callID != w.callID || w.id != "" && got.id != "" && got.id != w.id {
+		if !w.known || !got.known || got.sum != w.sum || got.typ != w.typ || got.callID != w.callID || w.id != "" && got.id != "" && got.id != w.id {
 			return false
 		}
 	}
