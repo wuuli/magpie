@@ -17896,6 +17896,7 @@ function panelQuotaCard(q, first = false) {
   const pace = line ? quotaEtaText(line, Date.now()) : "";
   if (pace) say.append(el("span", "pq-pace", " · " + pace));
   card.append(pqLine(say, q));
+  if (ws.length > 5) card.classList.add("pq-wrap");
   const rings = el("span", "pq-rings" + (ws.length > 4 ? " many" : ""));
   for (const w of ws) {
     const used = to100(w.used);
