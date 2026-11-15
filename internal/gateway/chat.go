@@ -1763,7 +1763,7 @@ func (e *chatEncoder) event(ev Event) {
 		if ev.Code != "" {
 			failed["code"] = ev.Code // preserve the upstream error type, including refusals
 		}
-		saidError(failed, ev.Said)
+		saidError(failed, ev.Said, ev.Status)
 		e.w.event("", map[string]any{"error": failed})
 	}
 	e.col.add(ev)

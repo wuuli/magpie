@@ -826,7 +826,11 @@ func (e *geminiEncoder) event(ev Event) {
 				"index": 0, "groundingMetadata": g}}, "modelVersion": e.model, "responseId": e.id})
 		}
 	case KError:
-		e.w.event("", map[string]any{"error": map[string]any{"code": 502, "message": ev.Text, "status": "UNAVAILABLE"}})
+		status := ev.Status
+		if status < 400 || status > 599 {
+			status = 502
+		}
+		e.w.event("", map[string]any{"error": geminiError(status, ev.Text)})
 	}
 	e.col.add(ev)
 }

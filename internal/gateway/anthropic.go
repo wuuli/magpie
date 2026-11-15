@@ -1871,7 +1871,7 @@ func (e *anthropicEncoder) event(ev Event) {
 		if ev.Code != "" {
 			failed["code"] = ev.Code // preserve the upstream error type, including refusals
 		}
-		saidError(failed, ev.Said)
+		saidError(failed, ev.Said, ev.Status)
 		e.w.event("error", map[string]any{"type": "error", "error": failed})
 	}
 	e.col.add(ev)

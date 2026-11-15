@@ -2090,8 +2090,13 @@ func requestRefused(data string) (int, json.RawMessage) {
 // Event's Said) on the error a stream encoder writes, so a request the
 // vendor refused reads as refused (invalid_request_error) to the agent and
 // to the hold that decides whether to ask again, not as magpie's api_error
-// (magpie-releases#18). Without Said it is left as it was.
-func saidError(failed map[string]any, said json.RawMessage) {
+// (magpie-releases#18). The numeric status is kept separately from a vendor's
+// string code: a remote magpie needs it once HTTP 200 has already gone out.
+// Without Said the vendor's fields are left as they were.
+func saidError(failed map[string]any, said json.RawMessage, status int) {
+	if status >= 400 && status <= 599 {
+		failed["status"] = status
+	}
 	e := gjson.GetBytes(said, "error")
 	for _, k := range []string{"type", "code", "param"} {
 		if v := e.Get(k); v.Type == gjson.String && v.String() != "" {
@@ -2466,7 +2471,7 @@ func (e *responsesEncoder) event(ev Event) {
 			code = ev.Code
 		}
 		failed := map[string]any{"code": code, "message": ev.Text}
-		saidError(failed, ev.Said)
+		saidError(failed, ev.Said, ev.Status)
 		e.send("response.failed", map[string]any{"response": e.response("failed", map[string]any{"error": failed})})
 	}
 	e.col.add(ev)

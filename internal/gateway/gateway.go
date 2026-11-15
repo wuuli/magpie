@@ -11148,17 +11148,22 @@ func writeErrorAs(w http.ResponseWriter, proto provider.Protocol, status int, ty
 	case provider.Anthropic:
 		v = map[string]any{"type": "error", "error": map[string]any{"type": typ, "message": msg}}
 	case provider.Gemini:
-		st := map[int]string{400: "INVALID_ARGUMENT", 408: "DEADLINE_EXCEEDED", 413: "INVALID_ARGUMENT", 401: "UNAUTHENTICATED", 403: "PERMISSION_DENIED", 404: "NOT_FOUND",
-			429: "RESOURCE_EXHAUSTED", 500: "INTERNAL", 502: "UNAVAILABLE", 503: "UNAVAILABLE", 529: "UNAVAILABLE"}[status]
-		if st == "" {
-			st = "UNKNOWN"
-		}
-		v = map[string]any{"error": map[string]any{"code": status, "message": msg, "status": st}}
+		v = map[string]any{"error": geminiError(status, msg)}
 	default:
 		v = map[string]any{"error": map[string]any{"message": msg, "type": typ, "code": code, "param": param}}
 	}
 	writeJSON(w, status, v)
 	return status
+}
+
+// geminiError gives JSON and streamed failures the same Google error shape.
+func geminiError(status int, msg string) map[string]any {
+	st := map[int]string{400: "INVALID_ARGUMENT", 408: "DEADLINE_EXCEEDED", 413: "INVALID_ARGUMENT", 401: "UNAUTHENTICATED", 403: "PERMISSION_DENIED", 404: "NOT_FOUND",
+		429: "RESOURCE_EXHAUSTED", 500: "INTERNAL", 502: "UNAVAILABLE", 503: "UNAVAILABLE", 529: "UNAVAILABLE"}[status]
+	if st == "" {
+		st = "UNKNOWN"
+	}
+	return map[string]any{"code": status, "message": msg, "status": st}
 }
 
 // tooLongRe matches how vendors say a request is more than the model's
