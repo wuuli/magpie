@@ -24,6 +24,7 @@ func relaunchFiles(t *testing.T) (exe, old string) {
 
 func stubLaunch(t *testing.T, f func(exe string, args, env []string) (<-chan struct{}, func(), error)) {
 	t.Helper()
+	freshSuccessor(t)
 	was := launch
 	launch = f
 	t.Cleanup(func() { launch = was })

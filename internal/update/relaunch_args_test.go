@@ -54,6 +54,7 @@ func TestRelaunchBinaryArgs(t *testing.T) {
 		exe := filepath.Join(dir, "magpie")
 		script := "#!/bin/sh\necho \"$* $MAGPIE_REPLACES\" > " + out + ".tmp && mv " + out + ".tmp " + out + "\n"
 		testenv.Program(t, exe, script)
+		freshSuccessor(t) // each case is a process of its own
 		if err := RelaunchBinary(exe, "", c.window, c.view); err != nil {
 			t.Fatal(err)
 		}

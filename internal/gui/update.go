@@ -1147,6 +1147,11 @@ func restartInto(web, window bool, view string, bySelf bool) bool {
 		updates.mu.Unlock()
 		err = relaunchBinary(exe, aside, window, view)
 	}
+	if errors.Is(err, update.ErrSuccessorStarted) {
+		// a WebView2 retry started the next magpie already: this one
+		// goes, and leaves the gateway to it (#7347)
+		return true
+	}
 	if errors.As(err, new(*update.BlockedError)) {
 		// the new version didn't start and this one is back in its place
 		// (#894): it runs on, and says why

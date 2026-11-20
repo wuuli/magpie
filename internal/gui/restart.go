@@ -59,6 +59,9 @@ func restartSelfNow(web, window bool, view string) bool {
 	} else {
 		err = relaunchBinary(exe, "", window, view)
 	}
+	if errors.Is(err, update.ErrSuccessorStarted) {
+		return true // a WebView2 retry started the next magpie already (#7347)
+	}
 	if err != nil {
 		// nothing would open it again: it runs on, and the page says so
 		log.Println("restart:", err)

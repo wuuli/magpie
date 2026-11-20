@@ -2,6 +2,7 @@ package gui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -281,7 +282,7 @@ func (ho *handover) fail(err error) bool {
 	for deadline := time.Now().Add(fallbackWait); gatewayBusy().Any() && time.Now().Before(deadline); {
 		time.Sleep(200 * time.Millisecond)
 	}
-	if ferr := ho.fallback(); ferr != nil {
+	if ferr := ho.fallback(); ferr != nil && !errors.Is(ferr, update.ErrSuccessorStarted) {
 		// nothing will start the new version: this one stays up
 		log.Println("update: the new version couldn't be started, this one runs on:", ferr)
 		return false

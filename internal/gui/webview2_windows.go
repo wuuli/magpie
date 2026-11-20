@@ -84,13 +84,18 @@ func webView2Free(dir string) bool {
 // one backs off first; then it waits, up to 30s, for the previous
 // process' WebView2 to let go of the profile folder.
 func webView2Prepare() {
-	try := webView2Try(os.Getenv(webView2TryEnv))
+	try := takeWebView2Try()
+	webView2Started = try
 	if try > 0 {
 		log.Printf("magpie: WebView2 start %d of %d, after a failure", try+1, webView2Tries)
 		time.Sleep(webView2Backoff(try))
 	}
 	webView2Ready(webView2Dir(), instanceID(), 30*time.Second)
 }
+
+// webView2Started is the starts made before this one, which a failure
+// counts on from.
+var webView2Started int
 
 // webView2Ready waits, up to max, for no other process to hold the
 // profile folder dir. A second launch waits for nothing: the magpie
@@ -139,10 +144,17 @@ func webView2Failed(app *application.App, err error) {
 	if !webView2Failure(err) {
 		return
 	}
-	try := webView2Try(os.Getenv(webView2TryEnv)) + 1
+	try := webView2Started + 1
 	if try < webView2Tries {
 		log.Printf("magpie: starting again (start %d of %d)", try+1, webView2Tries)
-		if rerr := update.Respawn(fmt.Sprintf("%s=%d", webView2TryEnv, try)); rerr != nil {
+		rerr := update.Respawn(fmt.Sprintf("%s=%d", webView2TryEnv, try))
+		if errors.Is(rerr, update.ErrSuccessorStarted) {
+			// a restart to update started the next magpie while the window
+			// was stuck: a second one would race it for the gateway (#7347)
+			log.Println("magpie: not starting again: a restart to update has started the next magpie")
+			return
+		}
+		if rerr != nil {
 			log.Println("magpie: starting again:", rerr)
 		} else {
 			return

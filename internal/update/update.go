@@ -1151,15 +1151,18 @@ func InstallBinaryAsAdmin(staged, exe string) error {
 // the gateway's port; see AwaitPredecessor. With old, where this one was
 // moved aside to (Windows), it waits for the new one to say it is up, and
 // when it can't start puts old back and says so (a *BlockedError): this
-// one then runs on rather than quitting.
+// one then runs on rather than quitting. It is ErrSuccessorStarted when
+// a WebView2 retry (Respawn) started one already.
 func RelaunchBinary(exe, old string, window bool, view string) error {
 	args := RelaunchArgs(window, view)
 	env := append(os.Environ(), "MAGPIE_REPLACES="+strconv.Itoa(os.Getpid()))
-	if old != "" {
-		return startChecked(exe, old, args, env)
-	}
-	_, _, err := launch(exe, args, env)
-	return err
+	return startSuccessor(func() error {
+		if old != "" {
+			return startChecked(exe, old, args, env)
+		}
+		_, _, err := launch(exe, args, env)
+		return err
+	})
 }
 
 // RelaunchArgs is what RelaunchBinary starts magpie with: `gui [view]` for

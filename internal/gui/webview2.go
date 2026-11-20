@@ -2,6 +2,7 @@ package gui
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -208,6 +209,16 @@ func webView2Failure(err error) bool {
 	}
 	m := strings.ToLower(err.Error())
 	return strings.Contains(m, "webview2")
+}
+
+// takeWebView2Try is the number of starts already made, read once from
+// the environment and taken out of it: only a WebView2 retry passes it on
+// (Respawn's extra). A restart to update inherited it, so the new version
+// began on "start 2 of 3" and gave up a try early (#7347).
+func takeWebView2Try() int {
+	n := webView2Try(os.Getenv(webView2TryEnv))
+	os.Unsetenv(webView2TryEnv)
+	return n
 }
 
 // webView2Try is the number of starts already made, from the env value.

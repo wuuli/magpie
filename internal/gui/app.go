@@ -402,6 +402,13 @@ func Run(version string, showMain bool, link string) error {
 	// the app has started (applyZoom)
 	h.textSize.Store(int64(settings.Shared().TextSize))
 	zoom := h.zoom()
+	// Windows: a start of this config made at the same moment waits here
+	// until this one owns the single instance (appstart.go, #7347)
+	single := singleInstance(h)
+	endStart := func() {}
+	if single != nil && runtime.GOOS == "windows" {
+		endStart = claimAppStart(settings.Dir(), appStartWait)
+	}
 	go stats.Run(version, "app")
 	handler := devShell(h)
 	ownPage := handler == nil
@@ -425,7 +432,7 @@ func Run(version string, showMain bool, link string) error {
 		// Windows and Linux start a new process for a magpie:// link (or a
 		// second launch); it hands its arguments to the running one and quits.
 		// The Mac sends the link to the running app itself.
-		SingleInstance: singleInstance(h),
+		SingleInstance: single,
 		Name:           "magpie",
 		Description:    "one place to pick every agent's model",
 		Icon:           appIconFor(),
@@ -476,6 +483,7 @@ func Run(version string, showMain bool, link string) error {
 		// Wails exits on some webview errors; say why before it does.
 		ErrorHandler: func(err error) { webView2Failed(h.app, err) },
 	})
+	endStart() // the single instance is this one's: a second start hands over to it
 	// Windows without the WebView2 runtime can make no window: Wails would
 	// exit on the first, with nothing on screen to say why (#1806). The
 	// reader is told in a box of Windows' own instead, and the launch ends.

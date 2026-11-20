@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -217,15 +218,46 @@ func ReadBlocked(current string) *Blocked {
 // ClearBlocked forgets the note: the version started after all.
 func ClearBlocked() { os.Remove(blockedFile()) }
 
+// ErrSuccessorStarted is a second start of the magpie that replaces this
+// one. On Windows a restart to update and a WebView2 retry each started
+// one while the window was stuck (#7347): both waited for this one to
+// exit, then raced for the gateway's port and the single instance, and
+// neither survived.
+var ErrSuccessorStarted = errors.New("the magpie that replaces this one is started already")
+
+// successor is the one start of a replacing magpie a process makes:
+// Respawn's or RelaunchBinary's, whichever comes first.
+var successor struct {
+	mu      sync.Mutex // held while a start is under way, so a second waits for its outcome
+	started bool
+}
+
+// startSuccessor runs start unless a successor is started already. A start
+// that fails leaves the next one free to try: a second caller waiting on a
+// restart that was refused (a *BlockedError) then starts its own.
+func startSuccessor(start func() error) error {
+	successor.mu.Lock()
+	defer successor.mu.Unlock()
+	if successor.started {
+		return ErrSuccessorStarted
+	}
+	err := start()
+	successor.started = err == nil
+	return err
+}
+
 // Respawn starts this program again with the arguments it was started
 // with and extra (NAME=value) added to its environment, detached. The new
 // process waits for this one to exit, as a relaunch does (AwaitPredecessor).
+// It is ErrSuccessorStarted when a restart started one already.
 func Respawn(extra ...string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	env := append(os.Environ(), "MAGPIE_REPLACES="+strconv.Itoa(os.Getpid()))
-	_, _, err = launch(exe, os.Args[1:], append(env, extra...))
-	return err
+	return startSuccessor(func() error {
+		_, _, err := launch(exe, os.Args[1:], append(env, extra...))
+		return err
+	})
 }
